@@ -5,9 +5,16 @@ DROP TABLE IF EXISTS users CASCADE;
 
 CREATE TABLE users (
   user_id      BIGSERIAL PRIMARY KEY,
+
+  -- In production, you commonly keep these NOT NULL.
   full_name    TEXT NOT NULL,
-  email        TEXT NOT NULL,
+
+  -- Production-realistic: email is usually unique.
+  email        TEXT NOT NULL UNIQUE,
+
+  -- phone often not unique; can be NULL
   phone        TEXT,
+
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

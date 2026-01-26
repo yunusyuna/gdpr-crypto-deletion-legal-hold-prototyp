@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Operations • GRAP</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">GD</div>
+      <div><h1>GRAP Compliance Console</h1><p>Operations</p></div>
+    </div>
+    <nav class="nav">
+      <a href="/operations.html"><span class="dot"></span> Operations</a>
+      <a href="/backups.html"><span class="dot"></span> Backups</a>
+      <a href="/holds.html"><span class="dot"></span> Legal Hold</a>
+      <a href="/restore.html"><span class="dot"></span> Restore</a>
+    </nav>
+    <div class="side-meta">
+      <div class="pillrow"><span class="pill">Create user</span><span class="pill">Destroy keys</span></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <div>
+        <h2>Operations</h2>
+        <p>Create users and test guarded key destruction.</p>
+      </div>
+      <div class="actions">
+        <div class="search"><span class="muted">User ID</span><input id="globalUserId" placeholder="2"></div>
+      </div>
+    </div>
+
+    <section class="grid">
+      <div class="card">
+        <div class="card-h">
+          <div><h3>Create User</h3><p>POST <span class="muted">/api/users</span></p></div>
+          <span class="badge"><span class="statusdot ok"></span> Ready</span>
+        </div>
+        <div class="card-b">
+          <div class="row3">
+            <div><label>Full name</label><input class="field" id="fullName" placeholder="User One"></div>
+            <div><label>Email</label><input class="field" id="email" placeholder="one@example.com"></div>
+            <div><label>Phone</label><input class="field" id="phone" placeholder="1111111111"></div>
+          </div>
+          <div class="btnbar">
+            <button class="btn primary" id="btnCreate">Create user</button>
+          </div>
+          <div class="panel" style="margin-top:12px;">
+            <div class="k">Response</div>
+            <pre id="outCreate">—</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">
+          <div><h3>Destroy Keys</h3><p>POST <span class="muted">/api/users/{id}/destroy-keys</span></p></div>
+          <span class="badge"><span class="statusdot warn"></span> Guarded</span>
+        </div>
+        <div class="card-b">
+          <div class="row">
+            <div><label>User id</label><input class="field" id="userId" placeholder="2"></div>
+            <div class="panel">
+              <div class="k">Tip</div>
+              <pre>Will be BLOCKED if legal hold active or user exists in protected backup.</pre>
+            </div>
+          </div>
+          <div class="btnbar">
+            <button class="btn danger" id="btnDestroy">Destroy keys</button>
+          </div>
+          <div class="panel" style="margin-top:12px;">
+            <div class="k">Response</div>
+            <pre id="outDestroy">—</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="/assets/app.js"></script>
+<script>
+  document.getElementById("btnCreate").onclick = async () => {
+    try {
+      const body = {
+        full_name: document.getElementById("fullName").value,
+        email: document.getElementById("email").value,
+        phone: document.getElementById("phone").value
+      };
+      const r = await apiJson("/api/users", { method:"POST", body: JSON.stringify(body) });
+      setPre("outCreate", r);
+      // convenience: set global user id if returned
+      const uid = r?.data?.user_id ?? r?.data?.userId ?? r?.data?.user_id;
+      if (uid) document.getElementById("globalUserId").value = uid;
+    } catch (e) {
+      setPre("outCreate", e.payload || { error: e.message });
+    }
+  };
+
+  document.getElementById("btnDestroy").onclick = async () => {
+    try {
+      const id = document.getElementById("userId").value || getGlobalUserId();
+      const r = await apiJson(`/api/users/${id}/destroy-keys`, { method:"POST" });
+      setPre("outDestroy", r);
+    } catch (e) {
+      setPre("outDestroy", e.payload || { error: e.message });
+    }
+  };
+</script>
+</body>
+</html>

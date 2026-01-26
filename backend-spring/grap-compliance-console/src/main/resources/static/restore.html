@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Restore • GRAP</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><div class="logo">GD</div><div><h1>GRAP Compliance Console</h1><p>Restore</p></div></div>
+    <nav class="nav">
+      <a href="/index.html"><span class="dot"></span> Home</a>
+      <a href="/operations.html"><span class="dot"></span> Operations</a>
+      <a href="/backups.html"><span class="dot"></span> Backups</a>
+      <a href="/holds.html"><span class="dot"></span> Legal Hold</a>
+      <a href="/restore.html"><span class="dot"></span> Restore</a>
+      <a href="/audit.html"><span class="dot"></span> Audit</a>
+    </nav>
+    <div class="side-meta">
+      <div class="pillrow"><span class="pill">truncate</span><span class="pill">restore</span></div>
+      <div class="side-note">Restore rebuilds users from users_shadow + key_store. Destroyed keys prevent recovery.</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <div>
+        <h2>Restore</h2>
+        <p>Truncate the active <span class="muted">users</span> table, then restore from encrypted shadow.</p>
+      </div>
+      <div class="actions">
+        <button class="btn danger" id="btnTruncate">Truncate users</button>
+        <button class="btn good" id="btnRestore">Restore users</button>
+      </div>
+    </div>
+
+    <section class="grid">
+      <div class="card">
+        <div class="card-h">
+          <div><h3>Truncate</h3><p>POST <span class="muted">/api/admin/truncate-users</span></p></div>
+          <span class="badge"><span class="statusdot bad"></span> Destructive</span>
+        </div>
+        <div class="card-b">
+          <div class="panel">
+            <div class="k">Response</div>
+            <pre id="outTruncate">—</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">
+          <div><h3>Restore</h3><p>POST <span class="muted">/api/admin/restore-users</span></p></div>
+          <span class="badge"><span class="statusdot ok"></span> Recover</span>
+        </div>
+        <div class="card-b">
+          <div class="panel">
+            <div class="k">Response</div>
+            <pre id="outRestore">—</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="foot">
+      Demo: Create user → Destroy keys → Truncate → Restore → user data will not be recoverable (keys are destroyed).
+    </div>
+  </main>
+</div>
+
+<script src="/assets/app.js"></script>
+<script>
+  document.getElementById("btnTruncate").onclick = async () => {
+    try {
+      const r = await apiJson("/api/admin/truncate-users", { method:"POST" });
+      setPre("outTruncate", r);
+    } catch (e) {
+      setPre("outTruncate", e.payload || { error: e.message });
+    }
+  };
+
+  document.getElementById("btnRestore").onclick = async () => {
+    try {
+      const r = await apiJson("/api/admin/restore-users", { method:"POST" });
+      setPre("outRestore", r);
+    } catch (e) {
+      setPre("outRestore", e.payload || { error: e.message });
+    }
+  };
+</script>
+</body>
+</html>

@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Legal Hold • GRAP</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><div class="logo">GD</div><div><h1>GRAP Compliance Console</h1><p>Legal Hold</p></div></div>
+    <nav class="nav">
+      <a href="/index.html"><span class="dot"></span> Home</a>
+      <a href="/operations.html"><span class="dot"></span> Operations</a>
+      <a href="/backups.html"><span class="dot"></span> Backups</a>
+      <a href="/holds.html"><span class="dot"></span> Legal Hold</a>
+      <a href="/restore.html"><span class="dot"></span> Restore</a>
+      <a href="/audit.html"><span class="dot"></span> Audit</a>
+    </nav>
+    <div class="side-meta">
+      <div class="pillrow"><span class="pill">Place</span><span class="pill">Release</span><span class="pill">List</span></div>
+      <div class="side-note">Holds block key destruction. Use this page to test LEGAL_HOLD_ACTIVE.</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <div>
+        <h2>Legal Hold</h2>
+        <p>Create and release holds for a user, and list active holds.</p>
+      </div>
+      <div class="actions">
+        <div class="search"><span class="muted">User ID</span><input id="globalUserId" placeholder="2" inputmode="numeric"></div>
+        <button class="btn ghost" id="btnListTop">List holds</button>
+      </div>
+    </div>
+
+    <section class="grid">
+      <div class="card">
+        <div class="card-h">
+          <div><h3>Place Hold</h3><p>POST <span class="muted">/api/admin/users/{id}/holds</span></p></div>
+          <span class="badge"><span class="statusdot warn"></span> Compliance</span>
+        </div>
+        <div class="card-b">
+          <div class="row">
+            <div><label>case_id</label><input class="field" id="caseId" placeholder="CASE-123"></div>
+            <div><label>reason</label><input class="field" id="reason" placeholder="Court order / eDiscovery"></div>
+          </div>
+          <div class="btnbar">
+            <button class="btn warn" id="btnPlace">Place hold</button>
+          </div>
+          <div class="panel" style="margin-top:12px;">
+            <div class="k">Response</div>
+            <pre id="outPlace">—</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">
+          <div><h3>Release Hold</h3><p>POST <span class="muted">/api/admin/users/{id}/holds/release</span></p></div>
+          <span class="badge"><span class="statusdot ok"></span> Unblock</span>
+        </div>
+        <div class="card-b">
+          <div class="row">
+            <div><label>case_id</label><input class="field" id="releaseCaseId" placeholder="CASE-123"></div>
+            <div class="panel">
+              <div class="k">Tip</div>
+              <pre>Active holds are rows where released_at IS NULL.</pre>
+            </div>
+          </div>
+          <div class="btnbar">
+            <button class="btn good" id="btnRelease">Release hold</button>
+            <button class="btn" id="btnList">List holds</button>
+          </div>
+          <div class="panel" style="margin-top:12px;">
+            <div class="k">Response</div>
+            <pre id="outRelease">—</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="card" style="margin-top:14px;">
+      <div class="card-h">
+        <div><h3>Active Holds</h3><p>GET <span class="muted">/api/admin/users/{id}/holds</span></p></div>
+        <span class="badge"><span class="statusdot ok"></span> View</span>
+      </div>
+      <div class="card-b">
+        <div class="panel">
+          <div class="k">Result</div>
+          <pre id="outList">—</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="foot">
+      Demo: Place hold → go to <b>Operations</b> → “Destroy Keys” should be blocked with <b>LEGAL_HOLD_ACTIVE</b>.
+    </div>
+  </main>
+</div>
+
+<script src="/assets/app.js"></script>
+<script>
+  async function listHolds() {
+    try {
+      const uid = getGlobalUserId();
+      const r = await apiJson(`/api/admin/users/${uid}/holds`);
+      setPre("outList", r);
+    } catch (e) {
+      setPre("outList", e.payload || { error: e.message });
+    }
+  }
+
+  document.getElementById("btnPlace").onclick = async () => {
+    try {
+      const uid = getGlobalUserId();
+      const body = {
+        case_id: document.getElementById("caseId").value,
+        reason: document.getElementById("reason").value
+      };
+      const r = await apiJson(`/api/admin/users/${uid}/holds`, { method:"POST", body: JSON.stringify(body) });
+      setPre("outPlace", r);
+      document.getElementById("releaseCaseId").value = document.getElementById("caseId").value;
+      await listHolds();
+    } catch (e) {
+      setPre("outPlace", e.payload || { error: e.message });
+    }
+  };
+
+  document.getElementById("btnRelease").onclick = async () => {
+    try {
+      const uid = getGlobalUserId();
+      const body = { case_id: document.getElementById("releaseCaseId").value };
+      const r = await apiJson(`/api/admin/users/${uid}/holds/release`, { method:"POST", body: JSON.stringify(body) });
+      setPre("outRelease", r);
+      await listHolds();
+    } catch (e) {
+      setPre("outRelease", e.payload || { error: e.message });
+    }
+  };
+
+  document.getElementById("btnList").onclick = listHolds;
+  document.getElementById("btnListTop").onclick = listHolds;
+  window.addEventListener("DOMContentLoaded", listHolds);
+</script>
+</body>
+</html>

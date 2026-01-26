@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GRAP Compliance Console</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">GD</div>
+      <div>
+        <h1>GRAP Compliance Console</h1>
+        <p>Crypto-deletion • Legal hold • Backups</p>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <a href="/index.html"><span class="dot"></span> Home</a>
+      <a href="/operations.html"><span class="dot"></span> Operations</a>
+      <a href="/backups.html"><span class="dot"></span> Backups</a>
+      <a href="/holds.html"><span class="dot"></span> Legal Hold</a>
+      <a href="/restore.html"><span class="dot"></span> Restore</a>
+      <a href="/audit.html"><span class="dot"></span> Audit</a>
+    </nav>
+
+    <div class="side-meta">
+      <div class="pillrow">
+        <span class="pill">DB: grap_proto</span>
+        <span class="pill">Mode: local</span>
+      </div>
+      <div class="side-note">
+        Home gives quick actions. Use pages for full workflows.
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <div>
+        <h2>Home</h2>
+        <p>Quick actions for Phase 4/5 demos: ping, legal hold, and audit previews.</p>
+      </div>
+      <div class="actions">
+        <div class="search">
+          <span class="muted">User ID</span>
+          <input id="globalUserId" placeholder="2" inputmode="numeric" />
+        </div>
+        <button class="btn ghost" id="btnPing">Ping</button>
+      </div>
+    </div>
+
+    <section class="grid">
+      <!-- Ping -->
+      <div class="card">
+        <div class="card-h">
+          <div>
+            <h3>API Health</h3>
+            <p>GET <span class="muted">/api/ping</span></p>
+          </div>
+          <span class="badge"><span class="statusdot ok"></span> API</span>
+        </div>
+        <div class="card-b">
+          <div class="btnbar">
+            <a class="btn primary" href="/operations.html">Go to Operations</a>
+            <a class="btn" href="/backups.html">Go to Backups</a>
+          </div>
+          <div class="panel" style="margin-top:12px;">
+            <div class="k">Ping Result</div>
+            <pre id="outPing">—</pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Legal Hold quick actions -->
+      <div class="card">
+        <div class="card-h">
+          <div>
+            <h3>Legal Hold (Quick)</h3>
+            <p>Place / Release / List active holds</p>
+          </div>
+          <span class="badge"><span class="statusdot warn"></span> Compliance</span>
+        </div>
+        <div class="card-b">
+          <div class="row">
+            <div>
+              <label>case_id</label>
+              <input class="field" id="caseId" placeholder="CASE-123">
+            </div>
+            <div>
+              <label>reason (optional)</label>
+              <input class="field" id="reason" placeholder="Court order / eDiscovery">
+            </div>
+          </div>
+
+          <div class="btnbar">
+            <button class="btn warn" id="btnPlaceHold">Place Hold</button>
+            <button class="btn good" id="btnReleaseHold">Release Hold</button>
+            <button class="btn" id="btnListHolds">List Holds</button>
+            <a class="btn ghost" href="/holds.html">Open Legal Hold Page</a>
+          </div>
+
+          <div class="panel" style="margin-top:12px;">
+            <div class="k">Result</div>
+            <pre id="outHolds">—</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Audit preview -->
+    <div class="card" style="margin-top:14px;">
+      <div class="card-h">
+        <div>
+          <h3>Audit Preview</h3>
+          <p>Last events from <span class="muted">deletion_audit</span> and <span class="muted">backup_protection_audit</span></p>
+        </div>
+        <span class="badge"><span class="statusdot ok"></span> Evidence</span>
+      </div>
+
+      <div class="card-b">
+        <div class="split">
+          <div class="search" style="min-width:240px;">
+            <span class="muted">Limit</span>
+            <input id="auditLimit" placeholder="20" inputmode="numeric">
+          </div>
+          <button class="btn primary" id="btnAuditRefresh">Refresh</button>
+          <a class="btn ghost" href="/audit.html">Open Audit Page</a>
+        </div>
+
+        <div class="row" style="margin-top:12px;">
+          <div class="panel">
+            <div class="k">Deletion Audit</div>
+            <pre id="outDeletionAudit">—</pre>
+          </div>
+          <div class="panel">
+            <div class="k">Backup Protection Audit</div>
+            <pre id="outBackupAudit">—</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="foot">
+      Tip: Place hold → try destroy keys → it should block → refresh audit and you’ll see the evidentiary timeline.
+    </div>
+  </main>
+</div>
+
+<script src="/assets/app.js"></script>
+<script>
+  // Ping
+  document.getElementById("btnPing").onclick = async () => {
+    try {
+      const r = await apiJson("/api/ping");
+      setPre("outPing", r);
+    } catch (e) {
+      setPre("outPing", e.payload || { error: e.message });
+    }
+  };
+
+  async function listHolds() {
+    try {
+      const uid = getGlobalUserId();
+      const r = await apiJson(`/api/admin/users/${uid}/holds`);
+      setPre("outHolds", r);
+    } catch (e) {
+      setPre("outHolds", e.payload || { error: e.message });
+    }
+  }
+
+  // Place Hold
+  document.getElementById("btnPlaceHold").onclick = async () => {
+    try {
+      const uid = getGlobalUserId();
+      const body = {
+        case_id: document.getElementById("caseId").value,
+        reason: document.getElementById("reason").value
+      };
+      const r = await apiJson(`/api/admin/users/${uid}/holds`, { method: "POST", body: JSON.stringify(body) });
+      setPre("outHolds", r);
+      await listHolds();
+    } catch (e) {
+      setPre("outHolds", e.payload || { error: e.message });
+    }
+  };
+
+  // Release Hold
+  document.getElementById("btnReleaseHold").onclick = async () => {
+    try {
+      const uid = getGlobalUserId();
+      const body = { case_id: document.getElementById("caseId").value };
+      const r = await apiJson(`/api/admin/users/${uid}/holds/release`, { method: "POST", body: JSON.stringify(body) });
+      setPre("outHolds", r);
+      await listHolds();
+    } catch (e) {
+      setPre("outHolds", e.payload || { error: e.message });
+    }
+  };
+
+  document.getElementById("btnListHolds").onclick = listHolds;
+
+  // Audit preview
+  async function refreshAudit() {
+    const limit = document.getElementById("auditLimit").value || "20";
+
+    try {
+      const d = await apiJson(`/api/admin/audit/deletion?limit=${encodeURIComponent(limit)}`);
+      setPre("outDeletionAudit", d);
+    } catch (e) {
+      setPre("outDeletionAudit", e.payload || { error: e.message });
+    }
+
+    try {
+      const b = await apiJson(`/api/admin/audit/backup-protection?limit=${encodeURIComponent(limit)}`);
+      setPre("outBackupAudit", b);
+    } catch (e) {
+      setPre("outBackupAudit", e.payload || { error: e.message });
+    }
+  }
+
+  document.getElementById("btnAuditRefresh").onclick = refreshAudit;
+
+  // initial load
+  window.addEventListener("DOMContentLoaded", () => {
+    listHolds();
+    refreshAudit();
+  });
+</script>
+</body>
+</html>

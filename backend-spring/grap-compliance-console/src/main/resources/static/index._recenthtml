@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GRAP Compliance Console</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">GD</div>
+      <div>
+        <h1>GRAP Compliance Console</h1>
+        <p>Crypto-deletion • Legal hold • Backups</p>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <a href="/operations.html"><span class="dot"></span> Operations</a>
+      <a href="/backups.html"><span class="dot"></span> Backups</a>
+      <a href="/holds.html"><span class="dot"></span> Legal Hold</a>
+      <a href="/restore.html"><span class="dot"></span> Restore</a>
+    </nav>
+
+    <div class="side-meta">
+      <div class="pillrow">
+        <span class="pill">DB: grap_proto</span>
+        <span class="pill">Mode: local</span>
+      </div>
+      <div class="side-note">Use the pages to run your Phase 4–5 demos quickly.</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <div>
+        <h2>Welcome</h2>
+        <p>Use this console to create users, create backups, index users into backups, enforce legal hold, and test guarded deletion.</p>
+      </div>
+      <div class="actions">
+        <div class="search">
+          <span class="muted">User ID</span>
+          <input id="globalUserId" placeholder="2" inputmode="numeric" />
+        </div>
+        <button class="btn ghost" id="btnPing">Ping</button>
+      </div>
+    </div>
+
+    <section class="grid">
+      <div class="card">
+        <div class="card-h">
+          <div>
+            <h3>Quick Health Check</h3>
+            <p>Tests if Spring Boot API is reachable.</p>
+          </div>
+          <span class="badge"><span class="statusdot ok"></span> API</span>
+        </div>
+        <div class="card-b">
+          <div class="btnbar">
+            <a class="btn primary" href="/operations.html">Go to Operations</a>
+            <a class="btn" href="/backups.html">Go to Backups</a>
+            <a class="btn warn" href="/holds.html">Go to Legal Hold</a>
+            <a class="btn" href="/restore.html">Go to Restore</a>
+          </div>
+          <div class="panel" style="margin-top:12px;">
+            <div class="k">Ping Result</div>
+            <pre id="outPing">—</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="/assets/app.js"></script>
+<script>
+  document.getElementById("btnPing").onclick = async () => {
+    try {
+      const r = await apiJson("/api/ping");
+      setPre("outPing", r);
+    } catch (e) {
+      setPre("outPing", e.payload || { error: e.message });
+    }
+  };
+</script>
+</body>
+</html>

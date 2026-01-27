@@ -25,13 +25,13 @@ public class GrapDao {
         );
     }
 
-    // Your DB function returns integer; safest is Integer + null handling
+    // DB function returns integer
     public int destroyUserKeys(long userId) {
         Integer v = jdbc.queryForObject("SELECT destroy_user_keys(?)", Integer.class, userId);
         return (v == null) ? 0 : v;
     }
 
-    // Optional “guarded” variant (only if you created destroy_user_keys_guarded in SQL)
+    // Optional “guarded” variant (ONLY if you created destroy_user_keys_guarded in SQL)
     public int destroyUserKeysGuarded(long userId) {
         Integer v = jdbc.queryForObject("SELECT destroy_user_keys_guarded(?)", Integer.class, userId);
         return (v == null) ? 0 : v;
@@ -76,7 +76,7 @@ public class GrapDao {
     // Phase 4: Backups
     // ----------------------------
     public Map<String, Object> createBackupRun(String backupType, boolean protectedByHold) {
-        // DB expects FULL/INCR (per your CHECK constraint)
+        // DB expects FULL/INCR (per CHECK constraint)
         String reason = protectedByHold ? "protected_by_hold=true at creation" : null;
 
         return jdbc.queryForMap(
@@ -131,11 +131,10 @@ public class GrapDao {
     }
 
     // ----------------------------
-    // Holds  (FIXED to match your table schema)
-    // Table: legal_holds(hold_id, user_id, hold_reason, created_at, released_at)
+    // Holds (matches your table schema)
+    // legal_holds(hold_id, user_id, hold_reason, created_at, released_at)
     // ----------------------------
 
-    // Create hold (NO case_id in your table)
     public Map<String, Object> placeLegalHold(long userId, String holdReason) {
         return jdbc.queryForMap(
                 "INSERT INTO legal_holds(user_id, hold_reason) VALUES (?, ?) " +
@@ -144,7 +143,6 @@ public class GrapDao {
         );
     }
 
-    // Release hold by hold_id (cleanest API)
     public Map<String, Object> releaseLegalHoldByHoldId(long holdId) {
         return jdbc.queryForMap(
                 "UPDATE legal_holds " +
@@ -155,19 +153,15 @@ public class GrapDao {
         );
     }
 
-    // Release all active holds for a user (optional helper)
+    // Optional helper: release ALL active holds for a user (returns row count)
     public int releaseAllActiveHoldsForUser(long userId) {
-        Integer v = jdbc.queryForObject(
+        return jdbc.update(
                 "UPDATE legal_holds SET released_at = now() " +
-                        "WHERE user_id = ? AND released_at IS NULL " +
-                        "RETURNING 1",
-                Integer.class, userId
+                        "WHERE user_id = ? AND released_at IS NULL",
+                userId
         );
-        // NOTE: If you want accurate row count, use jdbc.update(...) instead.
-        return (v == null) ? 0 : 1;
     }
 
-    // List active holds for a user
     public List<Map<String, Object>> listActiveHoldsForUser(long userId) {
         return jdbc.queryForList(
                 "SELECT hold_id, user_id, hold_reason, created_at " +
@@ -177,7 +171,6 @@ public class GrapDao {
         );
     }
 
-    // List all active holds (admin)
     public List<Map<String, Object>> listAllActiveHolds() {
         return jdbc.queryForList(
                 "SELECT hold_id, user_id, hold_reason, created_at " +
@@ -191,14 +184,14 @@ public class GrapDao {
     // ----------------------------
     public List<Map<String, Object>> getDeletionAudit(int limit) {
         return jdbc.queryForList(
-                "SELECT * FROM deletion_audit ORDER BY occurred_at DESC LIMIT ?",
+                "SELECT * FROM deletion_audit ORDER BY created_at DESC LIMIT ?",
                 limit
         );
     }
 
     public List<Map<String, Object>> getBackupProtectionAudit(int limit) {
         return jdbc.queryForList(
-                "SELECT * FROM backup_protection_audit ORDER BY occurred_at DESC LIMIT ?",
+                "SELECT * FROM backup_protection_audit ORDER BY created_at DESC LIMIT ?",
                 limit
         );
     }

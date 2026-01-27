@@ -1,0 +1,84 @@
+<script>
+  async function refreshUserView(userId) {
+    const id = userId || document.getElementById("userIdView")?.value || getGlobalUserId();
+    if (!id) {
+      setPre("outUser", { ok:false, error:"No user id provided" });
+      return;
+    }
+    try {
+      const r = await apiJson(`/api/users/${id}`);
+      setPre("outUser", r);
+    } catch (e) {
+      setPre("outUser", e.payload || { error: e.message });
+    }
+  }
+
+  async function refreshUsersList() {
+    const limit = document.getElementById("listLimit")?.value || "25";
+    try {
+      const r = await apiJson(`/api/users?limit=${encodeURIComponent(limit)}`);
+      setPre("outUsers", r);
+    } catch (e) {
+      setPre("outUsers", e.payload || { error: e.message });
+    }
+  }
+
+  document.getElementById("btnCreate").onclick = async () => {
+    try {
+      const body = {
+        full_name: document.getElementById("fullName").value,
+        email: document.getElementById("email").value,
+        phone: document.getElementById("phone").value
+      };
+
+      const r = await apiJson("/api/users", { method:"POST", body: JSON.stringify(body) });
+      setPre("outCreate", r);
+
+      // Extract created user_id
+      const uid = r?.data?.user_id ?? r?.data?.userId ?? r?.data?.user_id;
+      if (uid) {
+        document.getElementById("globalUserId").value = uid;
+        document.getElementById("userId").value = uid;       // destroy card
+        document.getElementById("userIdView").value = uid;   // user view card
+        await refreshUserView(uid);
+        await refreshUsersList();
+      }
+    } catch (e) {
+      setPre("outCreate", e.payload || { error: e.message });
+    }
+  };
+
+  document.getElementById("btnDestroy").onclick = async () => {
+    try {
+      const id = document.getElementById("userId").value || getGlobalUserId();
+      const r = await apiJson(`/api/users/${id}/destroy-keys`, { method:"POST" });
+      setPre("outDestroy", r);
+
+      // After destroy, refresh the user view so you can see REDACTION immediately
+      document.getElementById("userIdView").value = id;
+      await refreshUserView(id);
+    } catch (e) {
+      setPre("outDestroy", e.payload || { error: e.message });
+    }
+  };
+
+  // Manual buttons
+  document.getElementById("btnGetUser").onclick = async () => {
+    await refreshUserView();
+  };
+
+  document.getElementById("btnListUsers").onclick = async () => {
+    await refreshUsersList();
+  };
+
+  // Initial load
+  window.addEventListener("DOMContentLoaded", async () => {
+    // If there's a globalUserId already typed, show its data
+    const gid = document.getElementById("globalUserId")?.value;
+    if (gid) {
+      document.getElementById("userIdView").value = gid;
+      await refreshUserView(gid);
+    }
+    await refreshUsersList();
+  });
+</script>

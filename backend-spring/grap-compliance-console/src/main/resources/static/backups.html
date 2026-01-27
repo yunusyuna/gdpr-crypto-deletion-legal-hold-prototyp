@@ -9,7 +9,13 @@
 <body>
 <div class="app">
   <aside class="sidebar">
-    <div class="brand"><div class="logo">GD</div><div><h1>GRAP Compliance Console</h1><p>Backups</p></div></div>
+    <div class="brand">
+      <div class="logo">GD</div>
+      <div>
+        <h1>GRAP Compliance Console</h1>
+        <p>Backups</p>
+      </div>
+    </div>
     <nav class="nav">
       <a href="/operations.html"><span class="dot"></span> Operations</a>
       <a href="/backups.html"><span class="dot"></span> Backups</a>
@@ -17,7 +23,10 @@
       <a href="/restore.html"><span class="dot"></span> Restore</a>
     </nav>
     <div class="side-meta">
-      <div class="pillrow"><span class="pill">backup_runs</span><span class="pill">backup_user_index</span></div>
+      <div class="pillrow">
+        <span class="pill">backup_runs</span>
+        <span class="pill">backup_user_index</span>
+      </div>
     </div>
   </aside>
 
@@ -28,30 +37,46 @@
         <p>Create backup runs and index users into backups for Phase 4 demos.</p>
       </div>
       <div class="actions">
-        <div class="search"><span class="muted">User ID</span><input id="globalUserId" placeholder="2"></div>
+        <div class="search">
+          <span class="muted">User ID</span>
+          <input id="globalUserId" placeholder="2">
+        </div>
       </div>
     </div>
 
     <section class="grid">
       <div class="card">
         <div class="card-h">
-          <div><h3>Create Backup Run</h3><p>POST <span class="muted">/api/admin/backups</span></p></div>
+          <div>
+            <h3>Create Backup Run</h3>
+            <p>POST <span class="muted">/api/admin/backups</span></p>
+          </div>
           <span class="badge"><span class="statusdot ok"></span> Admin</span>
         </div>
         <div class="card-b">
           <div class="row">
-            <div><label>backup_type</label><input class="field" id="backupType" value="daily"></div>
+            <div>
+              <label>backup_type</label>
+              <!-- ✅ FIX: dropdown with DB-valid values -->
+              <select class="field" id="backupType">
+                <option value="INCR" selected>INCR (Incremental backup)</option>
+                <option value="FULL">FULL (Full backup)</option>
+              </select>
+            </div>
+
             <div>
               <label>protected_by_hold</label>
               <select class="field" id="protected">
                 <option value="true">true</option>
-                <option value="false">false</option>
+                <option value="false" selected>false</option>
               </select>
             </div>
           </div>
+
           <div class="btnbar">
             <button class="btn primary" id="btnCreateBackup">Create backup</button>
           </div>
+
           <div class="panel" style="margin-top:12px;">
             <div class="k">Response</div>
             <pre id="outBackup">—</pre>
@@ -61,7 +86,10 @@
 
       <div class="card">
         <div class="card-h">
-          <div><h3>Index User into Backup</h3><p>POST <span class="muted">/api/admin/backups/{id}/users</span></p></div>
+          <div>
+            <h3>Index User into Backup</h3>
+            <p>POST <span class="muted">/api/admin/backups/{id}/users</span></p>
+          </div>
           <span class="badge"><span class="statusdot warn"></span> Impacts deletion</span>
         </div>
         <div class="card-b">
@@ -87,11 +115,12 @@
   document.getElementById("btnCreateBackup").onclick = async () => {
     try {
       const body = {
-        backup_type: document.getElementById("backupType").value,
+        backup_type: document.getElementById("backupType").value, // ✅ now FULL/INCR
         protected_by_hold: document.getElementById("protected").value === "true"
       };
       const r = await apiJson("/api/admin/backups", { method:"POST", body: JSON.stringify(body) });
       setPre("outBackup", r);
+
       // convenience: auto-fill backup_id if returned
       const bid = r?.data?.backup_id ?? r?.data?.backupId ?? r?.data?.backup_id;
       if (bid) document.getElementById("backupId").value = bid;

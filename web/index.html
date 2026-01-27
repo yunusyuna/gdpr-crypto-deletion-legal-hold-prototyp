@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GRAP Compliance Console</title>
+
+  <style>
+    :root{
+      --bg: #0b1020;
+      --panel: rgba(255,255,255,0.06);
+      --panel2: rgba(255,255,255,0.04);
+      --border: rgba(255,255,255,0.10);
+      --text: rgba(255,255,255,0.92);
+      --muted: rgba(255,255,255,0.65);
+      --muted2: rgba(255,255,255,0.45);
+      --accent: #6d7cff;
+      --accent2:#22c55e;
+      --warn:#f59e0b;
+      --danger:#ef4444;
+      --shadow: 0 18px 60px rgba(0,0,0,0.45);
+      --radius: 18px;
+    }
+    *{ box-sizing: border-box; }
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      background:
+        radial-gradient(900px 500px at 12% 8%, rgba(109,124,255,0.25), transparent 60%),
+        radial-gradient(800px 520px at 85% 35%, rgba(34,197,94,0.16), transparent 55%),
+        radial-gradient(900px 620px at 55% 110%, rgba(245,158,11,0.12), transparent 60%),
+        var(--bg);
+    }
+
+    /* Layout */
+    .app{
+      min-height:100%;
+      display:grid;
+      grid-template-columns: 280px 1fr;
+    }
+    .sidebar{
+      border-right: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+      padding: 18px 16px;
+      position: sticky;
+      top:0;
+      height:100vh;
+      overflow:auto;
+      backdrop-filter: blur(14px);
+    }
+    .main{
+      padding: 18px 18px 60px;
+      max-width: 1200px;
+      margin: 0 auto;
+      width:100%;
+    }
+
+    /* Sidebar */
+    .brand{
+      display:flex;
+      gap:12px;
+      align-items:center;
+      padding: 10px 10px 14px;
+    }
+    .logo{
+      width: 44px; height:44px;
+      border-radius: 16px;
+      display:grid; place-items:center;
+      font-weight: 900;
+      letter-spacing: .5px;
+      background: linear-gradient(135deg, rgba(109,124,255,0.95), rgba(34,197,94,0.80));
+      box-shadow: var(--shadow);
+    }
+    .brand h1{
+      margin:0;
+      font-size: 14px;
+      line-height: 1.1;
+      letter-spacing: .2px;
+    }
+    .brand p{
+      margin: 4px 0 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .nav{
+      margin-top: 10px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      padding: 0 6px;
+    }
+    .nav a{
+      text-decoration:none;
+      color: var(--text);
+      border: 1px solid transparent;
+      background: rgba(255,255,255,0.02);
+      padding: 10px 12px;
+      border-radius: 14px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+      transition: 180ms ease;
+      font-size: 13px;
+    }
+    .nav a:hover{
+      border-color: rgba(109,124,255,0.35);
+      background: rgba(109,124,255,0.10);
+      transform: translateY(-1px);
+    }
+    .nav .dot{
+      width:10px; height:10px; border-radius:999px;
+      background: rgba(255,255,255,0.25);
+      box-shadow: 0 0 0 6px rgba(255,255,255,0.03);
+    }
+    .nav a.active .dot{ background: var(--accent); box-shadow: 0 0 0 6px rgba(109,124,255,0.14); }
+
+    .side-meta{
+      margin-top: 16px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: rgba(255,255,255,0.03);
+    }
+    .pillrow{ display:flex; flex-wrap:wrap; gap:8px; }
+    .pill{
+      font-size: 12px;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      padding: 6px 10px;
+      border-radius: 999px;
+    }
+    .side-note{
+      margin-top:10px;
+      font-size: 12px;
+      color: var(--muted2);
+      line-height: 1.4;
+    }
+
+    /* Header */
+    .top{
+      display:flex;
+      justify-content: space-between;
+      align-items:flex-start;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .top h2{ margin:0; font-size: 18px; letter-spacing:.2px; }
+    .top p{ margin:6px 0 0; color: var(--muted); font-size: 13px; max-width: 720px; }
+    .actions{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .search{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      min-width: 280px;
+    }
+    .search input{
+      width:100%;
+      background: transparent;
+      border: none;
+      outline:none;
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    /* Cards */
+    .grid{
+      display:grid;
+      grid-template-columns: 1.1fr 1fr;
+      gap: 14px;
+    }
+    @media (max-width: 980px){
+      .app{ grid-template-columns: 1fr; }
+      .sidebar{ position: relative; height:auto; }
+      .grid{ grid-template-columns: 1fr; }
+      .search{ min-width: 100%; }
+    }
+
+    .card{
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .card-h{
+      padding: 14px 14px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      display:flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .card-h h3{ margin:0; font-size: 14px; letter-spacing:.2px;}
+    .card-h p{ margin:6px 0 0; color: var(--muted); font-size:12px; line-height:1.4; }
+    .card-b{ padding: 14px; }
+
+    /* Forms */
+    .row{ display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .row3{ display:grid; grid-template-columns: 1.2fr 1.2fr 1fr; gap: 10px; }
+    @media (max-width: 780px){
+      .row, .row3{ grid-template-columns: 1fr; }
+    }
+    label{ display:block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    .field{
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 10px 12px;
+      color: var(--text);
+      outline: none;
+      width: 100%;
+      font-size: 13px;
+    }
+    .field:focus{ border-color: rgba(109,124,255,0.55); box-shadow: 0 0 0 5px rgba(109,124,255,0.12); }
+
+    /* Buttons */
+    .btn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      font-weight: 700;
+      font-size: 13px;
+      cursor:pointer;
+      transition: 160ms ease;
+      user-select:none;
+    }
+    .btn:hover{ transform: translateY(-1px); filter: brightness(1.05); }
+    .btn.primary{ background: rgba(109,124,255,0.85); border-color: rgba(109,124,255,0.9); }
+    .btn.good{ background: rgba(34,197,94,0.85); border-color: rgba(34,197,94,0.9); }
+    .btn.warn{ background: rgba(245,158,11,0.85); border-color: rgba(245,158,11,0.9); }
+    .btn.danger{ background: rgba(239,68,68,0.85); border-color: rgba(239,68,68,0.9); }
+    .btn.ghost{ background: rgba(255,255,255,0.02); }
+
+    .btnbar{ display:flex; gap:10px; flex-wrap:wrap; margin-top: 10px; }
+
+    /* Badges */
+    .badge{
+      font-size: 12px;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      padding: 6px 10px;
+      border-radius: 999px;
+      display:inline-flex;
+      gap:8px;
+      align-items:center;
+      white-space: nowrap;
+    }
+    .statusdot{ width:8px; height:8px; border-radius:999px; background: rgba(255,255,255,0.35); }
+    .statusdot.ok{ background: var(--accent2); }
+    .statusdot.warn{ background: var(--warn); }
+    .statusdot.bad{ background: var(--danger); }
+
+    /* Panels / code */
+    .panels{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    .panel{
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.03);
+      border-radius: 14px;
+      padding: 12px;
+    }
+    .panel .k{ font-size:12px; color: var(--muted); margin-bottom: 8px; }
+    pre{
+      margin:0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      line-height: 1.4;
+      color: rgba(255,255,255,0.88);
+    }
+
+    /* Table */
+    table{
+      width:100%;
+      border-collapse: collapse;
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    thead th{
+      text-align:left;
+      font-size:12px;
+      color: var(--muted);
+      padding: 10px 12px;
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid rgba(255,255,255,0.10);
+    }
+    tbody td{
+      padding: 10px 12px;
+      font-size: 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.86);
+      vertical-align: top;
+    }
+    tbody tr:hover{ background: rgba(255,255,255,0.02); }
+    .muted{ color: var(--muted); }
+    .foot{
+      margin-top: 14px;
+      font-size: 12px;
+      color: var(--muted2);
+      line-height: 1.4;
+    }
+
+    /* Toast */
+    .toastwrap{
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      z-index: 999;
+    }
+    .toast{
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(10,16,32,0.85);
+      backdrop-filter: blur(12px);
+      padding: 10px 12px;
+      border-radius: 14px;
+      min-width: 280px;
+      box-shadow: var(--shadow);
+      display:flex;
+      gap:10px;
+      align-items:flex-start;
+    }
+    .toast .t{ font-weight:800; font-size: 13px; }
+    .toast .m{ font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .toast .x{
+      margin-left:auto;
+      background: transparent;
+      border: none;
+      color: rgba(255,255,255,0.7);
+      cursor:pointer;
+      font-size: 14px;
+    }
+    .toast .dot{ width:10px; height:10px; border-radius:999px; margin-top: 4px; }
+    .dot.ok{ background: var(--accent2); }
+    .dot.warn{ background: var(--warn); }
+    .dot.bad{ background: var(--danger); }
+
+    /* Small helper */
+    .split{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">GD</div>
+        <div>
+          <h1>GRAP Compliance Console</h1>
+          <p>Crypto-deletion • Legal hold • Backup protection</p>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <a class="active" href="#ops"><span class="dot"></span> Operations</a>
+        <a href="#holds"><span class="dot"></span> Legal Hold</a>
+        <a href="#restore"><span class="dot"></span> Restore</a>
+        <a href="#audit"><span class="dot"></span> Audit</a>
+      </nav>
+
+      <div class="side-meta">
+        <div class="pillrow">
+          <span class="pill">DB: grap_proto</span>
+          <span class="pill">UI: demo</span>
+          <span class="pill">Mode: local</span>
+        </div>
+        <div class="side-note">
+          Next step: connect this UI to a REST API (Flask / Spring Boot) that calls your SQL functions:
+          <span class="muted">destroy_user_keys</span>, <span class="muted">protect_backups_for_legal_hold</span>, etc.
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="top">
+        <div>
+          <h2>Operations Dashboard</h2>
+          <p>
+            Create users in the active table, auto-encrypt into shadow storage, destroy keys for cryptographic deletion,
+            enforce legal holds, and protect only impacted backups (not all backups).
+          </p>
+        </div>
+        <div class="actions">
+          <div class="search">
+            <span class="muted">User ID</span>
+            <input id="globalUserId" placeholder="1" inputmode="numeric" />
+          </div>
+          <button class="btn ghost" id="btnRefreshAll">Refresh</button>
+        </div>
+      </div>
+
+      <section class="grid">
+        <!-- Create User -->
+        <div class="card" id="ops">
+          <div class="card-h">
+            <div>
+              <h3>Create User</h3>
+              <p>Insert plaintext into <span class="muted">users</span>. Triggers should populate <span class="muted">users_shadow</span> and <span class="muted">key_store</span>.</p>
+            </div>
+            <span class="badge"><span class="statusdot ok"></span> Ready</span>
+          </div>
+          <div class="card-b">
+            <div class="row3">
+              <div>
+                <label>Full name</label>
+                <input class="field" id="fullName" placeholder="User One" />
+              </div>
+              <div>
+                <label>Email (unique)</label>
+                <input class="field" id="email" placeholder="one@example.com" />
+              </div>
+              <div>
+                <label>Phone</label>
+                <input class="field" id="phone" placeholder="1111111111" />
+              </div>
+            </div>
+
+            <div class="btnbar">
+              <button class="btn primary" id="btnCreateUser">Create user</button>
+              <button class="btn" id="btnRefreshUser">Refresh user status</button>
+              <button class="btn" id="btnRefreshKeys">Refresh keys</button>
+            </div>
+
+            <div class="foot">
+              Tip: if you re-ran schema scripts that drop/recreate <span class="muted">users</span>, re-run <span class="muted">sql/05_triggers.sql</span> to reattach triggers.
+            </div>
+          </div>
+        </div>
+
+        <!-- Crypto Deletion + Restore -->
+        <div class="card" id="restore">
+          <div class="card-h">
+            <div>
+              <h3>Cryptographic Deletion & Restore</h3>
+              <p>Destroy keys to make ciphertext permanently unreadable (including in backups). Restore rebuilds <span class="muted">users</span> from shadow with redaction.</p>
+            </div>
+            <span class="badge"><span class="statusdot warn"></span> Demo mode</span>
+          </div>
+          <div class="card-b">
+            <div class="row">
+              <div>
+                <label>Target user id</label>
+                <input class="field" id="eraseUserId" placeholder="1" inputmode="numeric" />
+              </div>
+              <div>
+                <label>Scope (optional)</label>
+                <input class="field" id="erasePurpose" placeholder="ALL / email / phone / name" />
+              </div>
+            </div>
+
+            <div class="btnbar">
+              <button class="btn danger" id="btnDestroyKeys">Destroy keys</button>
+              <button class="btn" id="btnRestoreSim">Simulate restore</button>
+            </div>
+
+            <div class="panels" style="margin-top:12px;">
+              <div class="panel">
+                <div class="k">Result</div>
+                <pre id="resultPanel">No actions yet.</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Legal Hold -->
+        <div class="card" id="holds">
+          <div class="card-h">
+            <div>
+              <h3>Legal Hold & Backup Protection</h3>
+              <p>Hold blocks deletion. Protect only backups containing the user (sets <span class="muted">protected_by_hold=true</span>).</p>
+            </div>
+            <span class="badge"><span class="statusdot ok"></span> Enforced</span>
+          </div>
+          <div class="card-b">
+            <div class="row">
+              <div>
+                <label>User id</label>
+                <input class="field" id="holdUserId" placeholder="1" inputmode="numeric" />
+              </div>
+              <div>
+                <label>Hold reason</label>
+                <input class="field" id="holdReason" placeholder="Court Order XYZ / Case-2026-ABC" />
+              </div>
+            </div>
+
+            <div class="btnbar">
+              <button class="btn warn" id="btnAddHold">Add legal hold</button>
+              <button class="btn" id="btnReleaseHold">Release hold</button>
+              <button class="btn primary" id="btnProtectBackups">Protect backups for hold</button>
+              <button class="btn" id="btnLookupBackups">Lookup backups</button>
+            </div>
+
+            <div class="panels" style="margin-top:12px;">
+              <div class="panel">
+                <div class="k">Backups</div>
+                <pre id="backupsPanel">No backup lookup yet.</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status + Audit -->
+        <div class="card" id="audit">
+          <div class="card-h">
+            <div>
+              <h3>Status & Audit Timeline</h3>
+              <p>Shows what your backend will return: active user, shadow ciphertext, key status, and audit events.</p>
+            </div>
+            <span class="badge"><span class="statusdot ok"></span> Timeline ready</span>
+          </div>
+          <div class="card-b">
+            <div class="row">
+              <div class="panel">
+                <div class="k">Active (users)</div>
+                <pre id="activePanel">—</pre>
+              </div>
+              <div class="panel">
+                <div class="k">Shadow (users_shadow)</div>
+                <pre id="shadowPanel">—</pre>
+              </div>
+            </div>
+
+            <div class="panel" style="margin-top:10px;">
+              <div class="k">Key status (key_store)</div>
+              <pre id="keysPanel">—</pre>
+            </div>
+
+            <div style="margin-top:12px;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Action</th>
+                    <th>User</th>
+                    <th>Details</th>
+                  </tr>
+                </thead>
+                <tbody id="auditBody">
+                  <tr><td colspan="4" class="muted">No audit entries yet.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="foot">
+              This UI is frontend-only. Next, we’ll connect it to real endpoints that execute your SQL functions and return JSON.
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toastwrap" id="toasts"></div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    // ---- Mini toast system
+    function toast(type, title, msg){
+      const wrap = $("toasts");
+      const el = document.createElement("div");
+      el.className = "toast";
+      const dotClass = type === "ok" ? "ok" : type === "warn" ? "warn" : "bad";
+      el.innerHTML = \`
+        <div class="dot \${dotClass}"></div>
+        <div>
+          <div class="t">\${title}</div>
+          <div class="m">\${msg}</div>
+        </div>
+        <button class="x" aria-label="Close">✕</button>
+      \`;
+      el.querySelector(".x").onclick = () => el.remove();
+      wrap.appendChild(el);
+      setTimeout(() => el.remove(), 4200);
+    }
+
+    // ---- Audit table
+    const audit = [];
+    function addAudit(action, userId, details){
+      audit.unshift({ t: new Date().toISOString(), action, userId, details });
+      renderAudit();
+    }
+    function renderAudit(){
+      const body = $("auditBody");
+      body.innerHTML = "";
+      if(audit.length === 0){
+        body.innerHTML = '<tr><td colspan="4" class="muted">No audit entries yet.</td></tr>';
+        return;
+      }
+      for(const r of audit.slice(0, 10)){
+        const tr = document.createElement("tr");
+        tr.innerHTML = \`
+          <td>\${r.t}</td>
+          <td>\${r.action}</td>
+          <td>\${r.userId ?? "-"}</td>
+          <td>\${r.details}</td>
+        \`;
+        body.appendChild(tr);
+      }
+    }
+
+    // ---- Demo state (until backend is connected)
+    function setPre(id, obj){
+      $(id).textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+    }
+    function getUid(){
+      return Number($("globalUserId").value || $("eraseUserId").value || $("holdUserId").value || 1);
+    }
+    function syncUserIds(){
+      const uid = $("globalUserId").value || "1";
+      if(!$("eraseUserId").value) $("eraseUserId").value = uid;
+      if(!$("holdUserId").value) $("holdUserId").value = uid;
+    }
+
+    $("btnRefreshAll").onclick = () => {
+      syncUserIds();
+      toast("ok", "Refreshed", "In real mode this would call /api/status/:userId.");
+      addAudit("REFRESH", getUid(), "Would refresh panels from backend.");
+    };
+
+    $("btnCreateUser").onclick = () => {
+      const payload = {
+        full_name: $("fullName").value.trim() || "User One",
+        email: $("email").value.trim() || "one@example.com",
+        phone: $("phone").value.trim() || "1111111111",
+      };
+      // demo user id
+      const uid = Math.floor(Math.random()*900)+1;
+      $("globalUserId").value = uid;
+      syncUserIds();
+
+      setPre("activePanel", { table:"users", user_id: uid, ...payload });
+      setPre("shadowPanel", { table:"users_shadow", user_id: uid, email_enc:"<ciphertext...>", phone_enc:"<ciphertext...>" });
+      setPre("keysPanel", [
+        { user_id: uid, purpose:"name", destroyed_at:null },
+        { user_id: uid, purpose:"email", destroyed_at:null },
+        { user_id: uid, purpose:"phone", destroyed_at:null },
+      ]);
+      setPre("resultPanel", "User created. Triggers would encrypt into shadow + create keys.");
+
+      toast("ok", "User created", `Inserted user_id=${uid} (demo).`);
+      addAudit("CREATE_USER", uid, "Inserted into users; triggers populate shadow and key_store.");
+
+      $("fullName").value = "";
+      $("email").value = "";
+      $("phone").value = "";
+    };
+
+    $("btnRefreshUser").onclick = () => {
+      const uid = getUid();
+      toast("ok", "Refresh", `Would fetch active/shadow for user_id=${uid}.`);
+      addAudit("REFRESH_USER", uid, "Would call GET /api/users/:id and /api/shadow/:id");
+    };
+
+    $("btnRefreshKeys").onclick = () => {
+      const uid = getUid();
+      toast("ok", "Refresh", `Would fetch keys for user_id=${uid}.`);
+      addAudit("REFRESH_KEYS", uid, "Would call GET /api/keys/:id");
+    };
+
+    $("btnDestroyKeys").onclick = () => {
+      const uid = Number($("eraseUserId").value || 1);
+      const scope = ($("erasePurpose").value || "ALL").trim();
+      setPre("resultPanel", `Destroy keys requested for user_id=${uid}, scope=${scope} (demo).`);
+      toast("warn", "Crypto deletion", "This is demo-only. Next we wire it to destroy_user_keys().");
+      addAudit("CRYPTO_ERASE", uid, `Would call destroy_user_keys(${uid}, '${scope}') and write deletion_audit.`);
+      setPre("keysPanel", { user_id: uid, status: "DESTROYED (simulated)", scope });
+    };
+
+    $("btnRestoreSim").onclick = () => {
+      toast("ok", "Restore simulation", "Would truncate users and run restore_users_from_shadow().");
+      addAudit("RESTORE_SIM", getUid(), "Would run restore_users_from_shadow() with trigger suppression.");
+      setPre("resultPanel", "Restore simulated. Deleted users restore as redacted/tombstoned values.");
+    };
+
+    $("btnAddHold").onclick = () => {
+      const uid = Number($("holdUserId").value || 1);
+      const reason = ($("holdReason").value || "Court Order").trim();
+      toast("warn", "Legal hold added", `user_id=${uid} (${reason})`);
+      addAudit("ADD_HOLD", uid, `Would INSERT legal_holds(user_id, reason='${reason}')`);
+      setPre("resultPanel", `Legal hold active for user_id=${uid} (demo).`);
+    };
+
+    $("btnReleaseHold").onclick = () => {
+      const uid = Number($("holdUserId").value || 1);
+      toast("ok", "Legal hold released", `user_id=${uid}`);
+      addAudit("RELEASE_HOLD", uid, "Would UPDATE legal_holds SET released_at=now()");
+      setPre("resultPanel", `Legal hold released for user_id=${uid} (demo).`);
+    };
+
+    $("btnProtectBackups").onclick = () => {
+      const uid = Number($("holdUserId").value || 1);
+      toast("ok", "Backups protected", `Only backups containing user_id=${uid} are protected.`);
+      addAudit("PROTECT_BACKUPS", uid, "Would call protect_backups_for_legal_hold(user_id)");
+      setPre("backupsPanel", [
+        { backup_id: 1, protected_by_hold: true },
+        { backup_id: 2, protected_by_hold: false }
+      ]);
+    };
+
+    $("btnLookupBackups").onclick = () => {
+      const uid = Number($("holdUserId").value || 1);
+      toast("ok", "Backup lookup", `Would list backups containing user_id=${uid}.`);
+      addAudit("LOOKUP_BACKUPS", uid, "Would query backup_user_index join backup_runs.");
+      setPre("backupsPanel", [
+        { backup_id: 1, backup_type: "FULL", protected_by_hold: true }
+      ]);
+    };
+
+    // initial
+    setPre("activePanel", "—");
+    setPre("shadowPanel", "—");
+    setPre("keysPanel", "—");
+    setPre("resultPanel", "No actions yet.");
+    setPre("backupsPanel", "No backup lookup yet.");
+    renderAudit();
+  </script>
+</body>
+</html>

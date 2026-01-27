@@ -67,7 +67,7 @@ public class GrapController {
         }
     }
 
-    // GET /api/users/{id}/keys
+    // GET /api/users/{id}/keys  (shows key_store rows)
     @GetMapping("/users/{id}/keys")
     public ApiResponse<?> getUserKeys(@PathVariable("id") long id) {
         try {
@@ -77,11 +77,11 @@ public class GrapController {
         }
     }
 
-    // POST /api/users/{id}/destroy-keys
+    // Destroy keys (guarded if function exists; otherwise swap to destroyUserKeys)
     @PostMapping("/users/{id}/destroy-keys")
     public ApiResponse<?> destroyKeys(@PathVariable("id") long id) {
         try {
-            // If destroy_user_keys_guarded does NOT exist in DB, change to dao.destroyUserKeys(id)
+            // If you did NOT create destroy_user_keys_guarded in SQL, change to dao.destroyUserKeys(id)
             int destroyed = dao.destroyUserKeysGuarded(id);
             return ApiResponse.ok(Map.of("user_id", id, "keys_destroyed", destroyed));
         } catch (DataAccessException e) {
@@ -118,7 +118,7 @@ public class GrapController {
     @PostMapping("/admin/backups")
     public ApiResponse<?> createBackup(@RequestBody edu.depaul.grap.dto.CreateBackupRequest req) {
         try {
-            // DB CHECK expects FULL/INCR. Default INCR.
+            // DB CHECK expects FULL/INCR. Default to INCR.
             String type = (req != null && req.backup_type != null && !req.backup_type.isBlank())
                     ? req.backup_type.trim().toUpperCase()
                     : "INCR";
@@ -167,19 +167,25 @@ public class GrapController {
     }
 
     // ----------------------------
-    // Holds (DB: legal_holds has hold_id, user_id, hold_reason, created_at, released_at)
+    // Holds (FIXED: legal_holds has hold_reason + created_at, no case_id)
     // ----------------------------
 
-    // POST /api/admin/users/{id}/holds
-    // body accepts either: {"hold_reason":"..."} OR {"reason":"..."}  (UI-friendly)
+    // POST /api/admin/users/{id}/holds   body: { "hold_reason": "text..." }
     @PostMapping("/admin/users/{id}/holds")
     public ApiResponse<?> placeHold(@PathVariable("id") long id,
-                                    @RequestBody(required = false) Map<String, Object> body) {
+                                    @RequestBody edu.depaul.grap.dto.PlaceHoldRequest req) {
+        // We'll read either req.hold_reason OR fallback to req.reason if your DTO still has "reason"
         String holdReason = null;
-        if (body != null) {
-            Object hr = body.get("hold_reason");
-            if (hr == null) hr = body.get("reason"); // backward compatible
-            if (hr != null) holdReason = hr.toString();
+        if (req != null) {
+            // try both field names to be robust with your current DTO
+            try {
+                holdReason = (String) req.getClass().getField("hold_reason").get(req);
+            } catch (Exception ignored) { }
+            if (holdReason == null) {
+                try {
+                    holdReason = (String) req.getClass().getField("reason").get(req);
+                } catch (Exception ignored) { }
+            }
         }
 
         if (holdReason == null || holdReason.isBlank()) {
@@ -194,7 +200,6 @@ public class GrapController {
         }
     }
 
-    // Canonical release:
     // POST /api/admin/holds/{holdId}/release
     @PostMapping("/admin/holds/{holdId}/release")
     public ApiResponse<?> releaseHoldByHoldId(@PathVariable("holdId") long holdId) {
@@ -208,41 +213,7 @@ public class GrapController {
         }
     }
 
-    // UI-compat endpoint (fixes your current 404):
-    // POST /api/admin/users/{id}/holds/release
-    // body: {"hold_id":123}   (or {"case_id":"123"} if numeric; otherwise error)
-    @PostMapping("/admin/users/{id}/holds/release")
-    public ApiResponse<?> releaseHoldCompat(@PathVariable("id") long userId,
-                                           @RequestBody(required = false) Map<String, Object> body) {
-        Object v = (body == null) ? null : body.get("hold_id");
-        if (v == null && body != null) v = body.get("case_id"); // if someone sends numeric case_id
-        if (v == null) return ApiResponse.err("hold_id is required (list holds first, then release by hold_id)", null);
-
-        final long holdId;
-        try {
-            holdId = (v instanceof Number) ? ((Number) v).longValue() : Long.parseLong(v.toString());
-        } catch (Exception parse) {
-            return ApiResponse.err("hold_id must be a number (your DB uses hold_id, not case_id)", v.toString());
-        }
-
-        try {
-            var row = dao.releaseLegalHoldByHoldId(holdId);
-
-            // safety check (optional but good)
-            Object rUser = (row == null) ? null : row.get("user_id");
-            if (rUser instanceof Number && ((Number) rUser).longValue() != userId) {
-                return ApiResponse.err("hold_id does not belong to this user", null);
-            }
-
-            return ApiResponse.ok(row);
-        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
-            return ApiResponse.err("No active hold found for this hold_id", null);
-        } catch (DataAccessException e) {
-            return ApiResponse.err("Release legal hold failed", e.getMostSpecificCause().getMessage());
-        }
-    }
-
-    // GET /api/admin/users/{id}/holds (active holds for user)
+    // GET /api/admin/users/{id}/holds   (active holds for a user)
     @GetMapping("/admin/users/{id}/holds")
     public ApiResponse<?> listHoldsForUser(@PathVariable("id") long id) {
         try {
@@ -252,7 +223,7 @@ public class GrapController {
         }
     }
 
-    // GET /api/admin/holds (all active holds)
+    // GET /api/admin/holds   (all active holds)
     @GetMapping("/admin/holds")
     public ApiResponse<?> listAllActiveHolds() {
         try {

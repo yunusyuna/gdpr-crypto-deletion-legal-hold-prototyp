@@ -1,0 +1,826 @@
+CREATE SEQUENCE IF NOT EXISTS users_user_id_seq;
+ALTER TABLE users ALTER COLUMN user_id SET DEFAULT nextval('users_user_id_seq');
+SELECT setval('users_user_id_seq', COALESCE((SELECT MAX(user_id) FROM users),0)+1, false);
+
+Production-grade improvement (optional, but recommended)
+
+Add a helper function:
+
+CREATE OR REPLACE FUNCTION fix_users_sequence()
+RETURNS void AS $$
+BEGIN
+  PERFORM setval(
+    'users_user_id_seq',
+    COALESCE((SELECT MAX(user_id) FROM users), 0) + 1,
+    false
+  );
+END;
+$$ LANGUAGE plpgsql;
+
+
+Call it after:
+
+restore
+
+truncate+restore
+
+migrations
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION destroy_user_keys_guarded(p_user_id bigint)
+RETURNS bigint
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_hold_active boolean;
+  v_in_protected_backup boolean;
+BEGIN
+  -- 1) Block if legal hold active
+  SELECT EXISTS (
+    SELECT 1
+    FROM legal_holds
+    WHERE user_id = p_user_id
+      AND released_at IS NULL
+  ) INTO v_hold_active;
+
+  IF v_hold_active THEN
+    RAISE EXCEPTION 'LEGAL_HOLD_ACTIVE for user_id=%', p_user_id;
+  END IF;
+
+  -- 2) Block if user exists in any protected backup
+  SELECT EXISTS (
+    SELECT 1
+    FROM backup_user_index bi
+    JOIN backup_runs b ON b.backup_id = bi.backup_id
+    WHERE bi.user_id = p_user_id
+      AND b.protected_by_hold = true
+  ) INTO v_in_protected_backup;
+
+  IF v_in_protected_backup THEN
+    RAISE EXCEPTION 'USER_IN_PROTECTED_BACKUP for user_id=%', p_user_id;
+  END IF;
+
+  -- 3) Otherwise destroy keys
+  RETURN destroy_user_keys(p_user_id);
+END;
+$$;
+
+
+Correct Fix (best for Phase-4/Phase-5): Create the missing guarded wrapper
+
+Because your UI message says:
+
+“will be BLOCKED if legal hold active or user exists in protected backup.”
+
+That means you must have a guarded function (or guarded endpoint). The cleanest is to implement it in SQL as a wrapper and keep Spring simple.
+
+Step 1 — Create destroy_user_keys_guarded(bigint)
+
+Run this in psql:
+
+CREATE OR REPLACE FUNCTION destroy_user_keys_guarded(p_user_id bigint)
+RETURNS integer
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_hold_active boolean;
+  v_in_protected_backup boolean;
+  v_destroyed integer;
+BEGIN
+  -- Block if there is an active legal hold for this user
+  SELECT EXISTS (
+    SELECT 1
+    FROM legal_holds
+    WHERE user_id = p_user_id
+      AND released_at IS NULL
+  ) INTO v_hold_active;
+
+  IF v_hold_active THEN
+    RAISE EXCEPTION 'LEGAL_HOLD_ACTIVE for user_id=%', p_user_id;
+  END IF;
+
+  -- Block if user appears in any protected backup
+  SELECT EXISTS (
+    SELECT 1
+    FROM backup_user_index bi
+    JOIN backup_runs b ON b.backup_id = bi.backup_id
+    WHERE bi.user_id = p_user_id
+      AND b.protected_by_hold = true
+  ) INTO v_in_protected_backup;
+
+  IF v_in_protected_backup THEN
+    RAISE EXCEPTION 'USER_IN_PROTECTED_BACKUP for user_id=%', p_user_id;
+  END IF;
+
+  -- Otherwise proceed to destroy keys (all purposes)
+  v_destroyed := destroy_user_keys(p_user_id, NULL);
+  RETURN v_destroyed;
+END;
+$$;
+
+Step 2 — Confirm it exists
+\df destroy_user_keys_guarded
+
+Step 3 — Test from psql
+SELECT destroy_user_keys_guarded(13);
+
+
+Now your UI “Destroy keys” button should work.
+
+🔧 If you want guarded by purpose later
+
+Your base function supports:
+
+destroy_user_keys(userId, 'email')
+
+
+We can add another overload later:
+
+destroy_user_keys_guarded(p_user_id bigint, p_purpose text)
+
+
+But for now your UI clearly expects the 1-arg version.
+
+Got it — Option B (instant redaction), but you’ll implement later. Here’s the clean “production-style” design you can keep ready as a future patch.
+
+Option B semantics (what will happen)
+
+When you click Destroy Keys:
+
+Guard checks
+
+If legal hold active → BLOCK
+
+If user exists in protected backup → BLOCK
+
+Destroy keys (crypto-shred)
+
+Immediately redact plaintext in users
+So even without restore/truncate, the active table stops showing PII.
+
+Write an audit row (evidence timeline)
+
+SQL patch to implement later (copy/paste ready)
+1) Add a helper redaction function
+CREATE OR REPLACE FUNCTION redact_user_row(p_user_id bigint)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  UPDATE users
+  SET full_name = '[REDACTED user_id=' || user_id || ']',
+      email     = 'deleted+' || user_id || '@example.invalid',
+      phone     = NULL
+  WHERE user_id = p_user_id;
+END;
+$$;
+
+2) Upgrade guarded destroy to include instant redaction + audit
+CREATE OR REPLACE FUNCTION destroy_user_keys_guarded(p_user_id bigint)
+RETURNS integer
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_hold_active boolean;
+  v_in_protected_backup boolean;
+  v_destroyed integer := 0;
+BEGIN
+  -- Guard 1: active legal hold
+  SELECT EXISTS (
+    SELECT 1 FROM legal_holds
+    WHERE user_id = p_user_id AND released_at IS NULL
+  ) INTO v_hold_active;
+
+  IF v_hold_active THEN
+    RAISE EXCEPTION 'LEGAL_HOLD_ACTIVE for user_id=%', p_user_id;
+  END IF;
+
+  -- Guard 2: user in protected backup
+  SELECT EXISTS (
+    SELECT 1
+    FROM backup_user_index bi
+    JOIN backup_runs b ON b.backup_id = bi.backup_id
+    WHERE bi.user_id = p_user_id AND b.protected_by_hold = true
+  ) INTO v_in_protected_backup;
+
+  IF v_in_protected_backup THEN
+    RAISE EXCEPTION 'USER_IN_PROTECTED_BACKUP for user_id=%', p_user_id;
+  END IF;
+
+  -- 1) Destroy keys (all purposes)
+  v_destroyed := destroy_user_keys(p_user_id, NULL);
+
+  -- 2) Immediately redact plaintext
+  PERFORM redact_user_row(p_user_id);
+
+  -- 3) Audit (if you have deletion_audit)
+  INSERT INTO deletion_audit(user_id, action, details, created_at)
+  VALUES (
+    p_user_id,
+    'DESTROY_KEYS_AND_REDACT',
+    jsonb_build_object('keys_destroyed', v_destroyed),
+    now()
+  );
+
+  RETURN v_destroyed;
+END;
+$$;
+
+Why this is production-realistic
+
+Crypto deletion makes ciphertext unrecoverable (including backups).
+
+Immediate redaction prevents PII exposure in the “active” table.
+
+Audit trail supports compliance evidence (who/when/what).
+
+What changes in your UI behavior (later)
+
+After calling:
+POST /api/users/{id}/destroy-keys
+
+Your SELECT * FROM users WHERE user_id = X; will show:
+
+[REDACTED user_id=X]
+
+deleted+X@example.invalid
+
+phone null
+
+No need to truncate/restore to “see” the effect.
+
+Suggested migration file name (for later Git)
+
+Put this in:
+sql/20_destroy_guarded_and_redact.sql
+
+Commit message:
+Phase 4B: Guarded crypto-deletion with instant redaction + audit
+
+-------
+
+give me b but will not implement it now for later 
+
+give me b but will not implement it now for later 
+
+
+
+When you’re ready to implement B, tell me and I’ll also:
+
+
+update the Spring endpoint response to include redacted: true
+
+
+add a UI refresh step so the page immediately shows the new redacted user row
+
+Perfect — let’s implement Option B (instant redaction) now, cleanly and safely.
+Below is step-by-step, exactly what to change + how to verify.
+
+Step 0 — Safety first (don’t break your current demo)
+Before applying new SQL, take a quick look at current functions:
+\df destroy_user_keys*
+\df destroy_user_keys_guarded*
+
+This is just so you can confirm names.
+
+Step 1 — Create a new SQL migration file
+Create a new file in your repo (recommended):
+sql/20_destroy_guarded_and_redact.sql
+Paste this (production-style, with good behavior + correct count):
+-- Phase 4B: Guarded crypto-deletion + instant redaction + audit
+-- Safe to re-run due to CREATE OR REPLACE
+
+BEGIN;
+
+-- 1) Redact plaintext immediately (active table)
+CREATE OR REPLACE FUNCTION redact_user_row(p_user_id bigint)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  UPDATE users
+  SET full_name = '[REDACTED user_id=' || user_id || ']',
+      email     = 'deleted+' || user_id || '@example.invalid',
+      phone     = NULL
+  WHERE user_id = p_user_id;
+END;
+$$;
+
+-- 2) Make sure destroy_user_keys returns correct updated-row count
+-- If you already have this, this ensures correctness.
+CREATE OR REPLACE FUNCTION destroy_user_keys(p_user_id bigint, p_purpose text DEFAULT NULL)
+RETURNS integer
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_count integer := 0;
+BEGIN
+  UPDATE key_store
+     SET destroyed_at = now(),
+         key_material = 'DESTROYED'
+   WHERE user_id = p_user_id
+     AND destroyed_at IS NULL
+     AND (p_purpose IS NULL OR purpose = p_purpose);
+
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
+-- 3) Guarded function: checks holds + protected backups, then destroys + redacts + audits
+CREATE OR REPLACE FUNCTION destroy_user_keys_guarded(p_user_id bigint)
+RETURNS integer
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_hold_active boolean;
+  v_in_protected_backup boolean;
+  v_destroyed integer := 0;
+BEGIN
+  -- Guard 1: active legal hold
+  SELECT EXISTS (
+    SELECT 1 FROM legal_holds
+    WHERE user_id = p_user_id AND released_at IS NULL
+  ) INTO v_hold_active;
+
+  IF v_hold_active THEN
+    RAISE EXCEPTION 'LEGAL_HOLD_ACTIVE for user_id=%', p_user_id;
+  END IF;
+
+  -- Guard 2: user in protected backup
+  SELECT EXISTS (
+    SELECT 1
+    FROM backup_user_index bi
+    JOIN backup_runs b ON b.backup_id = bi.backup_id
+    WHERE bi.user_id = p_user_id AND b.protected_by_hold = true
+  ) INTO v_in_protected_backup;
+
+  IF v_in_protected_backup THEN
+    RAISE EXCEPTION 'USER_IN_PROTECTED_BACKUP for user_id=%', p_user_id;
+  END IF;
+
+  -- 1) Destroy keys
+  v_destroyed := destroy_user_keys(p_user_id, NULL);
+
+  -- 2) Immediately redact plaintext in active table
+  PERFORM redact_user_row(p_user_id);
+
+  -- 3) Audit (only if deletion_audit exists)
+  INSERT INTO deletion_audit(user_id, action, details, created_at)
+  VALUES (
+    p_user_id,
+    'DESTROY_KEYS_AND_REDACT',
+    jsonb_build_object('keys_destroyed', v_destroyed),
+    now()
+  );
+
+  RETURN v_destroyed;
+END;
+$$;
+
+COMMIT;
+
+✅ This will fix two things at once:
+
+
+keys_destroyed will return correct counts (3 on first run)
+
+
+users row becomes redacted immediately (no need for restore simulation)
+
+
+
+Step 2 — Apply it in psql
+From psql:
+\i sql/20_destroy_guarded_and_redact.sql
+
+If your psql working directory is different, use the full path.
+
+Step 3 — Verify with a fresh user (best test)
+Create a new user through API or SQL. Example SQL:
+INSERT INTO users(full_name, email, phone)
+VALUES ('Test B', 'testb@example.com', '1231231234')
+RETURNING user_id;
+
+Assume it returns user_id = 15.
+Now destroy:
+SELECT destroy_user_keys_guarded(15) AS keys_destroyed;
+
+Expected:
+
+
+first time → 3
+
+
+Now check active table:
+SELECT user_id, full_name, email, phone FROM users WHERE user_id = 15;
+
+Expected:
+
+
+full_name: [REDACTED user_id=15]
+
+
+email: deleted+15@example.invalid
+
+
+phone: NULL
+
+
+Now check keys:
+SELECT purpose, destroyed_at, key_material
+FROM key_store
+WHERE user_id = 15
+ORDER BY purpose;
+
+Expected:
+
+
+3 rows, DESTROYED
+
+
+
+Step 4 — Spring Boot: make sure your DAO calls the guarded function
+In GrapDao, your method should be:
+public int destroyUserKeysGuarded(long userId) {
+    Integer v = jdbc.queryForObject("SELECT destroy_user_keys_guarded(?)", Integer.class, userId);
+    return (v == null) ? 0 : v;
+}
+
+And your controller should use that (sounds like you already did).
+Restart Spring:
+.\mvnw.cmd clean spring-boot:run
+
+
+Step 5 — UI: after destroy, refresh the user view
+Your UI currently shows the response, but you should also:
+
+
+re-fetch /api/users/{id} (or whatever endpoint you use to display user status)
+
+
+If you don’t yet have a “get user by id” endpoint, tell me and I’ll add:
+
+
+GET /api/users/{id} returning the current row from users
+so your UI can immediately display redaction.
+
+
+
+Quick check before we proceed
+Do you already have an endpoint like GET /api/users/{id} or GET /api/users?
+
+
+If yes, tell me the path and I’ll tell you exactly how to refresh UI.
+
+
+If no, I’ll give you the DAO + controller code for it in one shot.
+
+I’ll give you the exact code to paste.
+
+1) Update GrapDao.java
+
+Add these two methods:
+
+public Map<String, Object> getUserById(long userId) {
+    return jdbc.queryForMap(
+        "SELECT user_id, full_name, email, phone, created_at FROM users WHERE user_id = ?",
+        userId
+    );
+}
+
+public java.util.List<Map<String, Object>> listUsers(int limit) {
+    // safe limit
+    int safeLimit = Math.max(1, Math.min(limit, 200));
+    return jdbc.queryForList(
+        "SELECT user_id, full_name, email, phone, created_at " +
+        "FROM users ORDER BY user_id DESC LIMIT ?",
+        safeLimit
+    );
+}
+
+
+✅ queryForMap throws if not found — we’ll handle that in controller.
+
+2) Update GrapController.java
+
+Add imports at the top if missing:
+
+import org.springframework.dao.EmptyResultDataAccessException;
+
+
+Now add these endpoints inside the controller:
+
+@GetMapping("/users/{id}")
+public ApiResponse<?> getUser(@PathVariable("id") long id) {
+    try {
+        var row = dao.getUserById(id);
+        return ApiResponse.ok(row);
+    } catch (EmptyResultDataAccessException e) {
+        return ApiResponse.err("User not found", "user_id=" + id);
+    } catch (org.springframework.dao.DataAccessException e) {
+        return ApiResponse.err("Failed to load user", e.getMostSpecificCause().getMessage());
+    }
+}
+
+@GetMapping("/users")
+public ApiResponse<?> listUsers(@RequestParam(name = "limit", defaultValue = "50") int limit) {
+    try {
+        var rows = dao.listUsers(limit);
+        return ApiResponse.ok(java.util.Map.of("limit", limit, "users", rows));
+    } catch (org.springframework.dao.DataAccessException e) {
+        return ApiResponse.err("Failed to list users", e.getMostSpecificCause().getMessage());
+    }
+}
+
+3) Restart Spring Boot
+.\mvnw.cmd clean spring-boot:run
+
+4) Test from terminal (important)
+Ping
+curl.exe -s http://localhost:8080/api/ping
+
+List users
+curl.exe -s "http://localhost:8080/api/users?limit=20"
+
+Get user by id (example 14)
+curl.exe -s http://localhost:8080/api/users/14
+
+
+After you run your destroy keys (Option B), this endpoint will immediately show the row as redacted.
+
+5) UI behavior (what to do next)
+
+Once these endpoints work, we’ll update your user page JS so:
+
+after “Create user” → call GET /api/users/{id} and display it
+
+after “Destroy keys” → call GET /api/users/{id} again and display the updated (redacted) row
+
+optionally load the sidebar list using GET /api/users?limit=50
+
+-------
+
+Great catch 👍 — you’re right.
+At the moment your backend does NOT expose any read APIs, only write/operation ones.
+That’s why parts of the UI feel “blind”.
+Let’s break this down cleanly and then I’ll give you exact Spring Boot code to add (you can implement now or later).
+
+1️⃣ Current state (what you have)
+From your GrapController, you currently expose:
+✔ POST /api/users → create user
+✔ POST /api/users/{id}/destroy-keys
+✔ POST /api/admin/truncate-users
+✔ POST /api/admin/restore-users
+✔ GET /api/ping
+🚫 Missing (important):
+
+
+GET /api/users
+
+
+GET /api/users/{id}
+
+
+GET /api/users/{id}/status (optional but very useful)
+
+
+GET /api/audit/deletions (Phase 5)
+
+
+GET /api/holds
+
+
+Your HTML UI implicitly expects read endpoints, especially to:
+
+
+verify whether a user exists
+
+
+show redacted vs normal state
+
+
+confirm effects of key destruction
+
+
+
+2️⃣ Why this matters (architectural reason)
+Right now your system is write-heavy but read-blind.
+In real compliance systems:
+
+
+auditors never trust writes
+
+
+they verify via read-only evidence APIs
+
+
+So Phase-4/5 is incomplete without read endpoints, even if DB state is correct.
+
+3️⃣ Minimum endpoints you SHOULD add (Phase-4 completion)
+A. List users
+GET /api/users
+
+Purpose
+
+
+UI dropdowns
+
+
+sanity checks
+
+
+audit demos
+
+
+B. Get single user
+GET /api/users/{id}
+
+Purpose
+
+
+verify redaction
+
+
+confirm user still exists after key destruction
+
+
+
+4️⃣ DAO additions (safe, read-only)
+GrapDao.java
+public List<Map<String,Object>> listUsers() {
+    return jdbc.queryForList("""
+        SELECT user_id, full_name, email, phone, created_at
+        FROM users
+        ORDER BY user_id
+    """);
+}
+
+public Map<String,Object> getUser(long userId) {
+    return jdbc.queryForMap("""
+        SELECT user_id, full_name, email, phone, created_at
+        FROM users
+        WHERE user_id = ?
+    """, userId);
+}
+
+
+5️⃣ Controller additions (very small)
+GrapController.java
+@GetMapping("/users")
+public ApiResponse<?> listUsers() {
+    try {
+        return ApiResponse.ok(dao.listUsers());
+    } catch (DataAccessException e) {
+        return ApiResponse.err("Failed to list users",
+                e.getMostSpecificCause().getMessage());
+    }
+}
+
+@GetMapping("/users/{id}")
+public ApiResponse<?> getUser(@PathVariable long id) {
+    try {
+        return ApiResponse.ok(dao.getUser(id));
+    } catch (DataAccessException e) {
+        return ApiResponse.err("User not found",
+                e.getMostSpecificCause().getMessage());
+    }
+}
+
+✅ No schema changes needed
+✅ No risk to compliance logic
+✅ Pure read-only
+
+6️⃣ Why your “redaction confusion” happened (important insight)
+You observed:
+
+keys destroyed, but user record still shows full data
+
+That is EXPECTED in your current design.
+Why?
+
+
+Redaction occurs at write time
+
+
+destroy_user_keys() destroys keys → ciphertext becomes useless
+
+
+But plain columns remain unchanged until you:
+
+
+update user
+
+
+or explicitly run a redaction mutation
+
+
+
+
+This is actually good compliance design:
+
+
+Evidence preserved
+
+
+Logical deletion via crypto
+
+
+No silent data mutation
+
+
+🔒 Cryptographic deletion ≠ row deletion
+
+7️⃣ Optional (later): explicit redaction endpoint (Phase-6 idea)
+Not implementing now, just concept
+POST /api/users/{id}/redact
+
+Would:
+
+
+overwrite full_name, email, phone
+
+
+keep audit trail
+
+
+still comply with GDPR + legal hold logic
+
+
+
+8️⃣ Status right now (honest assessment)
+✅ Completed
+
+
+Phase 1–4 core logic
+
+
+Crypto deletion
+
+
+Legal hold enforcement
+
+
+Backup awareness
+
+
+Spring Boot API
+
+
+UI wiring (mostly)
+
+
+🔜 Missing but expected
+
+
+GET read APIs
+
+
+Audit listing endpoints
+
+
+Metrics endpoints (Phase-5B)
+
+
+
+9️⃣ What I recommend next (order)
+
+
+Add GET /api/users & /api/users/{id} ← do this next
+
+
+Wire UI “Verify” buttons
+
+
+Add audit list endpoint
+
+
+Freeze schema
+
+
+Write Phase-5 report screenshots
+
+
+
+If you want, next I can:
+
+
+wire the UI buttons to these new GET APIs
+
+
+add audit timeline page
+
+
+help you write the Phase-5B metrics section
+
+
+Just tell me 👉 “next: wire UI for GET users”
+
+----
+
+
+
+
+
+
